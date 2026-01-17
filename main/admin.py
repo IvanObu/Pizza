@@ -1,6 +1,6 @@
 from django.contrib import admin
-from django.utils.html import format_html
-from .models import Drink, Category, RomaPizza, SizeTemplate, Toppings, PizzaSize, Pizza
+from django.core.exceptions import ValidationError
+from .models import Drink, Category, RomaPizza, Toppings, Pizza, Combo, ComboDrink, ComboPizza, ComboRomaPizza
 # Register your models here.
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
@@ -24,91 +24,77 @@ class RomaPizzaAdmin(admin.ModelAdmin):
     list_filter = ['category', 'new']
     search_fields = ['name']
 
-class PizzaSizeInline(admin.TabularInline):
-    model = PizzaSize
-    extra = 0  # Не показывать пустые строки
-    min_num = 1  # Минимум 1 размер в шаблоне
-    ordering = ['order']
-    def prices_display(self, obj):
-        if not obj.pk:  
-            return "Сначала сохраните"
-        
-        sizes = obj.get_all_sizes_with_prices()
-        if not sizes:
-            return "Нет размеров"
-        
-        # Создаем красивый список цен
-        price_list = []
-        for size in sizes:
-            price_list.append(f"{size['size']}: {size['price']} руб")
-        
-        return format_html("<br>".join(price_list))
-    prices_display.short_description = "Цены по размерам"
-    
-    # Показываем изображение
-    def image_preview(self, obj):
-        if obj.image:
-            return format_html(
-                '<img src="{}" width="50" height="50" style="object-fit: cover;" />',
-                obj.image.url
-            )
-        return "Нет фото"
-    image_preview.short_description = "Изображение"
-
-@admin.register(SizeTemplate)
-class SizeTemplateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'is_default', 'sizes_count', 'sizes_list']
-    list_editable = ['is_default']  
-    inlines = [PizzaSizeInline]  
-    
-    def sizes_count(self, obj):
-        return obj.sizes.count()
-    sizes_count.short_description = "Кол-во размеров"
-    
-    def sizes_list(self, obj):
-        sizes = obj.sizes.all().order_by('order')
-        return ", ".join([f"{s.get_size_display()} (x{s.multiplier})" for s in sizes])
-    sizes_list.short_description = "Размеры в шаблоне"
-
 
 @admin.register(Pizza)
 class PizzaAdmin(admin.ModelAdmin):
-    list_display = ["name", 'slug', 'base_price', 'image', 'weight', 'category', 'size_template','new']
+    list_display = ['name', 'category', 'base_price_s', 'is_active', 'new', 'auto_calculate']
+    list_filter = ['category', 'is_active', 'new', 'auto_calculate']
+    filter_horizontal = ['composition']
+    list_editable = ['is_active', 'new', 'auto_calculate']
     prepopulated_fields = {'slug': ('name',)}
-    filter_horizontal = ['toppings']
-    list_filter = ['category', 'new']
     search_fields = ['name']
+    
+    # Поля в админке
+    fieldsets = [
+        ('Основная информация', {
+            'fields': ['name', 'slug', 'image', 'category', 'is_active', 'new']
+        }),
+        ('Состав', {
+            'fields': ['composition']
+        }),
+        ('Базовые параметры (размер S - 25см)', {
+            'fields': ['base_price_s', 'base_weight_s'],
+            'description': 'Цена и вес для маленькой пиццы (25 см)'
+        }),
+        ('Настройки расчета', {
+            'fields': ['auto_calculate'],
+            'description': 'Включите для автоматического расчета цен и веса'
+        }),
+        ('Коэффициенты для размера M (30см)', {
+            'fields': [('price_multiplier_m', 'weight_multiplier_m')],
+            'classes': ['collapse'],
+            'description': 'Коэффициенты для цены и веса среднего размера'
+        }),
+        ('Коэффициенты для размера L (35см)', {
+            'fields': [('price_multiplier_l', 'weight_multiplier_l')],
+            'classes': ['collapse'],
+            'description': 'Коэффициенты для цены и веса большого размера'
+        }),
+        ('Коэффициенты для размера XL (40см)', {
+            'fields': [('price_multiplier_xl', 'weight_multiplier_xl')],
+            'classes': ['collapse'],
+            'description': 'Коэффициенты для цены и веса очень большого размера'
+        }),
+    ]
+
+class ComboDrinkInline(admin.TabularInline):
+    model = ComboDrink
+    extra = 0  
+    min_num = 0  
+
+class ComboPizzaInline(admin.TabularInline):
+    model = ComboPizza
+    extra = 0  
+    min_num = 0  
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "pizza":
+            kwargs["queryset"] = Pizza.objects.filter(is_active=True)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class ComboRomaPizzaInline(admin.TabularInline):
+    model = ComboRomaPizza
+    extra = 0  
+    min_num = 0  
+
+@admin.register(Combo)
+class ComboAdmin(admin.ModelAdmin):
+    list_display = ['name']
+    inlines = [ComboPizzaInline, ComboRomaPizzaInline, ComboDrinkInline]
+    prepopulated_fields = {'slug': ('name',)}
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
 
 
 
-# class ToppingAdmin(admin.ModelAdmin):
-#     list_display = ['name', 'category', 'price']
-#     list_filter = ['category']
-#     search_fields = ['name']
-
-# class ProductSizeInline(admin.TabularInline):
-#     model = ProductSize
-#     extra = 1
-#     fields = ['size', 'stock']
-#     autocomplete_fields = ['size']   
-
-# class ProductAdmin(admin.ModelAdmin):
-#     list_display = ['name', 'category', 'price', 'description', 'image', 'weight']
-#     list_filter = ['category', 'price','weight']
-#     search_fields = ['category', 'price', 'description', 'weight']
-#     prepopulated_fields = {'slug': ('name',)} 
-#     inlines = [ProductSizeInline]
-
-
-# class CategoryAdmin(admin.ModelAdmin):
-#     list_display = ['name', 'has_sizes', 'has_toppings', 'size_type']
-#     prepopulated_fields = {'slug': ('name',)} 
-
-# class SizeAdmin(admin.ModelAdmin):
-#     list_display = ['name']
-#     list_filter = ['unit']
-#     search_fields = ['name']
-
-# admin.site.register(Topping, ToppingAdmin)
-# admin.site.register(Product, ProductAdmin)
-# admin.site.register(Size, SizeAdmin)
+    

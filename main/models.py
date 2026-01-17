@@ -71,36 +71,35 @@ class RomaPizza(models.Model):
     new = models.BooleanField(default=False)
     toppings = models.ManyToManyField(Toppings)
 
-class SizeTemplate(models.Model):
+# class SizeTemplate(models.Model):
 
-    name = models.CharField(
-        max_length=50,
-        unique=True,
-        verbose_name="Название шаблона",
-        help_text="Например: Стандартные размеры пицц"
-    )
+#     name = models.CharField(
+#         max_length=50,
+#         unique=True,
+#         verbose_name="Название шаблона",
+#         help_text="Например: Стандартные размеры пицц"
+#     )
 
-    is_default = models.BooleanField(
-        default=False,
-        verbose_name="Шаблон по умолчанию",
-        help_text="Использовать этот шаблон для новых пицц"
-    )
+#     is_default = models.BooleanField(
+#         default=False,
+#         verbose_name="Шаблон по умолчанию",
+#         help_text="Использовать этот шаблон для новых пицц"
+#     )
     
-    class Meta:
-        verbose_name = "Шаблон размеров"
-        verbose_name_plural = "Шаблоны размеров"
+#     class Meta:
+#         verbose_name = "Шаблон размеров"
+#         verbose_name_plural = "Шаблоны размеров"
     
-    def __str__(self):
-        return self.name
+#     def __str__(self):
+#         return self.name
     
-    def save(self, *args, **kwargs):
-        # Только один шаблон по умолчанию в моменте
-        if self.is_default:
-            SizeTemplate.objects.filter(is_default=True).update(is_default=False)
-        super().save(*args, **kwargs)
+#     def save(self, *args, **kwargs):
+#         # Только один шаблон по умолчанию в моменте
+#         if self.is_default:
+#             SizeTemplate.objects.filter(is_default=True).update(is_default=False)
+#         super().save(*args, **kwargs)
 
-class PizzaSize(models.Model):
-
+class Pizza(models.Model):
     SIZE_CHOICES = [
         ('S', 'Маленькая (25 см)'),
         ('M', 'Средняя (30 см)'),
@@ -108,101 +107,72 @@ class PizzaSize(models.Model):
         ('XL', 'Очень большая (40 см)'),
     ]
     
-    template = models.ForeignKey(
-        SizeTemplate,
-        on_delete=models.CASCADE,
-        related_name='sizes',
-        verbose_name="Шаблон"
+    name = models.CharField(max_length=30, unique=True, verbose_name="Название")
+    slug = models.SlugField(max_length=40, unique=True, verbose_name="Slug")
+    image = models.ImageField(upload_to="Pizza/%Y/%m/%d", blank=True, null=True, verbose_name="Изображение")
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='pizzas', verbose_name="Категория")
+    new = models.BooleanField(default=False, verbose_name="Новинка")
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+    composition = models.ManyToManyField(Toppings, blank=True, verbose_name="Ингредиенты")
+    
+    # Базовые параметры для размера S (это будут значения по умолчанию)
+    base_price_s = models.PositiveIntegerField(
+        default=400,
+        verbose_name="Базовая цена (S)",
+        help_text="Цена для маленького размера (25 см)",
+        validators=[MinValueValidator(0)]
     )
-    size = models.CharField(
-        max_length=2,
-        choices=SIZE_CHOICES,
-        verbose_name="Размер"
+    base_weight_s = models.PositiveIntegerField(
+        default=400,
+        verbose_name="Базовый вес (S)",
+        help_text="Вес для маленького размера в граммах"
     )
-    diameter_cm = models.PositiveIntegerField(
-        verbose_name="Диаметр (см)",
+    
+    # Настройки автоматического расчета
+    auto_calculate = models.BooleanField(
+        default=True,
+        verbose_name="Авторасчет",
+        help_text="Автоматически рассчитывать параметры для других размеров"
     )
-    multiplier = models.DecimalField(
+    
+    # Коэффициенты для авторасчета
+    price_multiplier_m = models.DecimalField(
         max_digits=4,
         decimal_places=2,
-        default=1.00,
-        verbose_name="Коэффициент цены",
-        help_text="Множитель для базовой цены. Пример: 1.3 = +30%"
+        default=1.3,
+        verbose_name="Коэф. цены M",
     )
-    order = models.PositiveIntegerField(
-        default=0,
-        verbose_name="Порядок"
-    )
-    
-    class Meta:
-        ordering = ['template', 'order']
-        unique_together = ['template', 'size'] # узнать
-        verbose_name = "Размер пиццы"
-        verbose_name_plural = "Размеры пицц"
-    
-    def __str__(self):
-        return f"{self.template.name} - {self.get_size_display()}"
-
-class Pizza(models.Model):
-    name = models.CharField(
-        max_length=30, 
-        unique=True,
-        verbose_name="Название"
-    )
-    slug = models.SlugField(
-        max_length=40, 
-        unique=True,
-        verbose_name="Slug"
-    )
-    
-    base_price = models.DecimalField(
-        max_digits=8,
+    price_multiplier_l = models.DecimalField(
+        max_digits=4,
         decimal_places=2,
-        verbose_name="Базовая цена",
-        help_text="Цена для самого маленького размера (S)",
-        validators=[MinValueValidator(0)] # Проверка что цена положительная
+        default=1.6,
+        verbose_name="Коэф. цены L",
+    )
+    price_multiplier_xl = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=2.0,
+        verbose_name="Коэф. цены XL",
+        
     )
     
-    image = models.ImageField(
-        upload_to="Pizza/%Y/%m/%d",
-        blank=True,
-        null=True,
-        verbose_name="Изображение"
+    weight_multiplier_m = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=1.3,
+        verbose_name="Коэф. веса M"
     )
-    weight = models.PositiveIntegerField(
-        default=400,
-        verbose_name="Вес (г)",
-        help_text="Вес пиццы размера S в граммах"
+    weight_multiplier_l = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=1.6,
+        verbose_name="Коэф. веса L"
     )
-    category = models.ForeignKey(
-        Category,
-        on_delete=models.CASCADE,
-        related_name='pizzas',
-        verbose_name="Категория"
-    )
-    
-    size_template = models.ForeignKey(
-        SizeTemplate,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        verbose_name="Шаблон размеров",
-        help_text="Если не выбран, используется шаблон по умолчанию"
-    )
-    
-    new = models.BooleanField(
-        default=False,
-        verbose_name="Новинка"
-    )
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="Активна"
-    )
-    
-    toppings = models.ManyToManyField(
-        Toppings,
-        blank=True,
-        verbose_name="Доступные топпинги",
+    weight_multiplier_xl = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=2.0,
+        verbose_name="Коэф. веса XL"
     )
     
     class Meta:
@@ -218,56 +188,123 @@ class Pizza(models.Model):
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
     
-    # МЕТОДЫ ДЛЯ РАБОТЫ С РАЗМЕРАМИ
+    def get_available_sizes(self):
+
+        sizes = ['S']
+        
+        # Проверяем, какие размеры включены
+        if self.price_multiplier_m > 0:
+            sizes.append('M')
+        if self.price_multiplier_l > 0:
+            sizes.append('L')
+        if self.price_multiplier_xl > 0:
+            sizes.append('XL')
+            
+        return sizes
     
-    @property
-    def active_size_template(self):
-        """Получить активный шаблон размеров"""
-        if self.size_template:
-            return self.size_template
-        default_template = SizeTemplate.objects.filter(is_default=True).first()
-        if default_template:
-            return default_template
-        return SizeTemplate.objects.first()
+    def get_price_for_size(self, size):
+
+        if size == 'S':
+            return self.base_price_s
+        elif size == 'M':
+            return self.base_price_s * self.price_multiplier_m
+        elif size == 'L':
+            return self.base_price_s * self.price_multiplier_l
+        elif size == 'XL':
+            return self.base_price_s * self.price_multiplier_xl
+        return self.base_price_s
     
-    def get_price_for_size(self, size_code):
-        try:
-            size = self.active_size_template.sizes.get(size=size_code)
-            return round(self.base_price * size.multiplier, 2)
-        except (SizeTemplate.DoesNotExist, PizzaSize.DoesNotExist):
-            return self.base_price
+    def get_weight_for_size(self, size):
+
+        if size == 'S':
+            return self.base_weight_s
+        elif size == 'M':
+            return int(self.base_weight_s * self.weight_multiplier_m)
+        elif size == 'L':
+            return int(self.base_weight_s * self.weight_multiplier_l)
+        elif size == 'XL':
+            return int(self.base_weight_s * self.weight_multiplier_xl)
+
+        return self.base_weight_s
     
-    def get_all_sizes_with_prices(self):
+    def get_diameter_for_size(self, size):
+        """Получить диаметр для конкретного размера"""
+        diameters = {
+            'S': 25,
+            'M': 30,
+            'L': 35,
+            'XL': 40,
+        }
+        return diameters.get(size)
+    
+    def get_size_pizza_info(self, size):
+        """Получить полную информацию о размере"""
+        return {
+            'size': size,
+            'size_display': dict(self.SIZE_CHOICES).get(size, 'Маленькая'),
+            'price': self.get_price_for_size(size),
+            'weight': self.get_weight_for_size(size),
+            'diameter': self.get_diameter_for_size(size),
+        }
+    
+    def get_all_info(self):
+        """Получить информацию обо всех доступных размерах"""
         result = []
-        if self.active_size_template:
-            for size_obj in self.active_size_template.sizes.all().order_by('order'):
-                price = round(self.base_price * size_obj.multiplier, 2)
-                result.append({
-                    'size': size_obj.size,
-                    'size_display': size_obj.get_size_display(),
-                    'diameter_cm': size_obj.diameter_cm,
-                    'multiplier': float(size_obj.multiplier),
-                    'price': price,
-                    'weight_g': self.weight 
-                })
+        for size in self.get_available_sizes():
+            result.append(self.get_size_pizza_info(size))
         return result
-
-
-# class Combo(models.Model):
-#     name = models.CharField(max_length=30, unique=True)
-#     slug = models.SlugField(max_length=40, unique=True)
-#     pizzas = models.ForeignKey(Pizza, null=True, blank=True)
-#     roma_pizzas = models.ForeignKey(RomaPizza, null=True, blank=True)
-#     drinks = models.ForeignKey(Drink, null=True, blank=True)
-#     class Meta:
-#         ordering = ['name']
-#         verbose_name = "Комбо набор"
-#         verbose_name_plural = "Комбо наборы"
-
-#     def __str__(self):
-#         return self.name
     
-#     def save(self, *args, **kwargs):
-#         if not self.slug:
-#             self.slug = slugify(self.name)
-#         super().save(*args, **kwargs)
+
+
+class Combo(models.Model):
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    name = models.CharField(max_length=30, unique=True)
+    slug = models.SlugField(max_length=40, unique=True)
+    pizzas = models.ManyToManyField(Pizza, through='ComboPizza', blank=True)
+    roman_pizzas = models.ManyToManyField(RomaPizza, through='ComboRomaPizza', blank=True)
+    drinks = models.ManyToManyField(Drink, through='ComboDrink', blank=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Комбо набор"
+        verbose_name_plural = "Комбо наборы"
+        
+
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+    
+class ComboPizza(models.Model):
+    combo = models.ForeignKey(Combo, on_delete=models.CASCADE)
+    pizza = models.ForeignKey(Pizza, null=True, blank=True, on_delete=models.CASCADE)
+    size = models.CharField(max_length=2, choices=Pizza.SIZE_CHOICES, default='M')
+    quantity = models.PositiveIntegerField(default=1, verbose_name="Количество")
+
+    class Meta:
+        unique_together = ['combo', 'pizza', 'size']
+
+class ComboRomaPizza(models.Model):
+    combo = models.ForeignKey(Combo, on_delete=models.CASCADE)
+    roman_pizza = models.ForeignKey(RomaPizza, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1, verbose_name="Количество")
+    
+    class Meta:
+        unique_together = ['combo', 'roman_pizza']
+    
+    def __str__(self):
+        return f"{self.roman_pizza.name} x{self.quantity}"
+
+class ComboDrink(models.Model):
+    combo = models.ForeignKey(Combo, on_delete=models.CASCADE)
+    drink = models.ForeignKey(Drink, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1, verbose_name="Количество")
+    
+    class Meta:
+        unique_together = ['combo', 'drink']
+    
+    def __str__(self):
+        return f"{self.drink.name} x{self.quantity}"
