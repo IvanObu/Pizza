@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 # Create your models here.
 
 class Category(models.Model):
@@ -174,6 +175,15 @@ class Pizza(models.Model):
         default=2.0,
         verbose_name="Коэф. веса XL"
     )
+
+    # Ручные цены и веса
+    price_m = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена M")
+    price_l = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена L")
+    price_xl = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена XL")
+
+    weight_m = models.PositiveIntegerField(null=True, blank=True, verbose_name="Вес M")
+    weight_l = models.PositiveIntegerField(null=True, blank=True, verbose_name="Вес L")
+    weight_xl = models.PositiveIntegerField(null=True, blank=True, verbose_name="Вес XL")
     
     class Meta:
         ordering = ['name']
@@ -203,29 +213,44 @@ class Pizza(models.Model):
         return sizes
     
     def get_price_for_size(self, size):
-
+        """Авто подстановка или ручная подстановка в зависимости от режима"""
         if size == 'S':
             return self.base_price_s
-        elif size == 'M':
-            return self.base_price_s * self.price_multiplier_m
-        elif size == 'L':
-            return self.base_price_s * self.price_multiplier_l
-        elif size == 'XL':
-            return self.base_price_s * self.price_multiplier_xl
-        return self.base_price_s
+
+        if self.auto_calculate:
+            multipliers = {
+                'M': self.price_multiplier_m,
+                'L': self.price_multiplier_l,
+                'XL': self.price_multiplier_xl,
+            }
+            return int(self.base_price_s * multipliers.get(size, 1))
+
+        manual_prices = {
+            'M': self.price_m,
+            'L': self.price_l,
+            'XL': self.price_xl,
+        }
+        return manual_prices.get(size)
     
     def get_weight_for_size(self, size):
 
         if size == 'S':
             return self.base_weight_s
-        elif size == 'M':
-            return int(self.base_weight_s * self.weight_multiplier_m)
-        elif size == 'L':
-            return int(self.base_weight_s * self.weight_multiplier_l)
-        elif size == 'XL':
-            return int(self.base_weight_s * self.weight_multiplier_xl)
 
-        return self.base_weight_s
+        if self.auto_calculate:
+            multipliers = {
+                'M': self.weight_multiplier_m,
+                'L': self.weight_multiplier_l,
+                'XL': self.weight_multiplier_xl,
+            }
+            return int(self.base_weight_s * multipliers.get(size, 1))
+
+        manual_weights = {
+            'M': self.weight_m,
+            'L': self.weight_l,
+            'XL': self.weight_xl,
+        }
+        return manual_weights.get(size)
     
     def get_diameter_for_size(self, size):
         """Получить диаметр для конкретного размера"""
@@ -254,6 +279,24 @@ class Pizza(models.Model):
             result.append(self.get_size_pizza_info(size))
         return result
     
+    def clean(self):
+        """ Валидация при сохранении модели"""
+        if not self.auto_calculate:
+            required_fields = [
+                self.price_m, self.price_l, self.price_xl,
+                self.weight_m, self.weight_l, self.weight_xl
+            ]
+
+            if any(v is None for v in required_fields):
+                raise ValidationError(
+                    "При выключенном авторасчёте необходимо заполнить все цены и веса для размеров M, L, XL"
+                )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # ← ВАЖНО так как clean не вызовится
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
 
 class Combo(models.Model):

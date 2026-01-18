@@ -50,22 +50,28 @@ class PizzaAdmin(admin.ModelAdmin):
             'fields': ['auto_calculate'],
             'description': 'Включите для автоматического расчета цен и веса'
         }),
-        ('Коэффициенты для размера M (30см)', {
-            'fields': [('price_multiplier_m', 'weight_multiplier_m')],
-            'classes': ['collapse'],
-            'description': 'Коэффициенты для цены и веса среднего размера'
+        ('Коэффициенты размеров (авторасчёт)', {
+            'fields': [
+                ('price_multiplier_m', 'weight_multiplier_m'),
+                ('price_multiplier_l', 'weight_multiplier_l'),
+                ('price_multiplier_xl', 'weight_multiplier_xl'),
+            ],
+            'classes': ['coef-fields'],
+            'description': 'Используются при включённом авторасчёте'
         }),
-        ('Коэффициенты для размера L (35см)', {
-            'fields': [('price_multiplier_l', 'weight_multiplier_l')],
-            'classes': ['collapse'],
-            'description': 'Коэффициенты для цены и веса большого размера'
-        }),
-        ('Коэффициенты для размера XL (40см)', {
-            'fields': [('price_multiplier_xl', 'weight_multiplier_xl')],
-            'classes': ['collapse'],
-            'description': 'Коэффициенты для цены и веса очень большого размера'
+        ('Ручные значения для размеров M / L / XL', {
+            'fields': [
+                ('price_m', 'weight_m'),
+                ('price_l', 'weight_l'),
+                ('price_xl', 'weight_xl'),
+            ],
+            'classes': ['manual-fields'],
         }),
     ]
+
+    class Media:
+        js = ('admin/js/pizza_admin.js',)
+        css = {'all': ('admin/css/pizza_admin.css',)}
 
 class ComboDrinkInline(admin.TabularInline):
     model = ComboDrink
