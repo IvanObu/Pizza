@@ -72,5 +72,5 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[id^="id_price_multiplier"], [id^="id_weight_multiplier"]')
         .forEach(el => el.addEventListener('input', recalc));
 
-    toggleBlocks(); // начальная настройка
+    toggleBlocks(); 
 });

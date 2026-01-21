@@ -1,16 +1,22 @@
 from django.contrib import admin
-from django.core.exceptions import ValidationError
-from .models import Drink, Category, RomaPizza, Toppings, Pizza, Combo, ComboDrink, ComboPizza, ComboRomaPizza
+from .models import Drink, DrinkSize, Category, RomaPizza, Toppings, Pizza, Combo, ComboDrink, ComboPizza, ComboRomaPizza
 # Register your models here.
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name']
     prepopulated_fields = {'slug': ('name',)} 
 
+class DrinkSizeInline(admin.TabularInline):
+    model = DrinkSize
+    extra = 0
+    min_num = 1
+
 @admin.register(Drink)
 class DrinkAdmin(admin.ModelAdmin):
-    list_display = ["name", 'slug', 'price', 'image', 'new']
+    list_display = ["name", "new"]
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [DrinkSizeInline]
 
 @admin.register(Toppings)
 class ToppingsAdmin(admin.ModelAdmin):
@@ -80,12 +86,22 @@ class ComboDrinkInline(admin.TabularInline):
 
 class ComboPizzaInline(admin.TabularInline):
     model = ComboPizza
-    extra = 0  
-    min_num = 0  
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "pizza":
-            kwargs["queryset"] = Pizza.objects.filter(is_active=True)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    extra = 0
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+
+        class Form(formset.form):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                if self.instance.pk and self.instance.pizza:
+                    price = self.instance.pizza.get_price_for_size(self.instance.size)
+                    self.fields['pizza'].widget.attrs['data-price'] = price
+
+        formset.form = Form
+        return formset
+
 
 class ComboRomaPizzaInline(admin.TabularInline):
     model = ComboRomaPizza
@@ -94,12 +110,40 @@ class ComboRomaPizzaInline(admin.TabularInline):
 
 @admin.register(Combo)
 class ComboAdmin(admin.ModelAdmin):
-    list_display = ['name']
+    list_display = ['name', 'items_price', 'final_price']
     inlines = [ComboPizzaInline, ComboRomaPizzaInline, ComboDrinkInline]
     prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ['auto_price_preview']
 
-    def save_related(self, request, form, formsets, change):
-        super().save_related(request, form, formsets, change)
+    fieldsets = (
+        ('Основное', {
+            'fields': ('name', 'slug', 'category')
+        }),
+        ('Цена', {
+            'fields': ('price', 'auto_price_preview'),
+            'description': 'Если цена не задана — используется автоматический расчёт'
+        }),
+    )
+
+    def auto_price_preview(self, obj):
+        if not obj.pk:
+            return "Будет рассчитана автоматически"
+        return obj.get_items_price()
+
+    auto_price_preview.short_description = "Автоматическая цена"
+
+
+    class Media:
+        js = ('admin/js/combo_admin.js',)
+
+    def items_price(self, obj):
+        return obj.get_items_price()
+    items_price.short_description = "Цена позиций без скидок"
+
+    def final_price(self, obj):
+        return obj.get_final_price()
+    final_price.short_description = "Итоговая цена"
+
 
 
 

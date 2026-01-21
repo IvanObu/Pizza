@@ -50,17 +50,64 @@ class Toppings(models.Model):
 
 
 class Drink(models.Model):
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name='drinks',
+    )
     name = models.CharField(max_length=30, unique=True)
     slug = models.SlugField(max_length=40, unique=True)
-    price = models.DecimalField(decimal_places=2, max_digits=8)
     image = models.ImageField(upload_to="Drinks/%Y/%m/%d")
     new = models.BooleanField(default=False)
-    # size = подумать, мб это в ордер засунуть
+    description = models.TextField(max_length=250)
+
     class Meta:
         ordering = ['name']
         verbose_name = "Напиток"
         verbose_name_plural = "Напитки"
 
+    def __str__(self):
+        return self.name
+
+
+class DrinkSize(models.Model):
+    class Size(models.TextChoices):
+        S = 'S', 'Маленький (250 мл)'
+        M = 'M', 'Средний (340 мл)'
+        L = 'L', 'Большой (420 мл)'
+
+    drink = models.ForeignKey(
+        Drink,
+        on_delete=models.CASCADE,
+        related_name='variants'
+    )
+    size = models.CharField(
+        max_length=1,
+        choices=Size.choices
+    )
+    price = models.DecimalField(
+        max_digits=6,
+        decimal_places=2
+    )
+
+    VOLUME_MAP = {
+        'S': 250,
+        'M': 340,
+        'L': 420,
+    }
+
+    @property
+    def volume_ml(self):
+        return self.VOLUME_MAP[self.size]
+
+    class Meta:
+        unique_together = ['drink', 'size']
+
+
+
+    def __str__(self):
+        return f"{self.drink.name} — {self.volume_ml}"
+    
 
 class RomaPizza(models.Model):
     name = models.CharField(max_length=30, unique=True)
@@ -71,34 +118,6 @@ class RomaPizza(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
     new = models.BooleanField(default=False)
     toppings = models.ManyToManyField(Toppings)
-
-# class SizeTemplate(models.Model):
-
-#     name = models.CharField(
-#         max_length=50,
-#         unique=True,
-#         verbose_name="Название шаблона",
-#         help_text="Например: Стандартные размеры пицц"
-#     )
-
-#     is_default = models.BooleanField(
-#         default=False,
-#         verbose_name="Шаблон по умолчанию",
-#         help_text="Использовать этот шаблон для новых пицц"
-#     )
-    
-#     class Meta:
-#         verbose_name = "Шаблон размеров"
-#         verbose_name_plural = "Шаблоны размеров"
-    
-#     def __str__(self):
-#         return self.name
-    
-#     def save(self, *args, **kwargs):
-#         # Только один шаблон по умолчанию в моменте
-#         if self.is_default:
-#             SizeTemplate.objects.filter(is_default=True).update(is_default=False)
-#         super().save(*args, **kwargs)
 
 class Pizza(models.Model):
     SIZE_CHOICES = [
@@ -199,10 +218,9 @@ class Pizza(models.Model):
         super().save(*args, **kwargs)
     
     def get_available_sizes(self):
-
+        """Проверка на доступный размеры"""
         sizes = ['S']
         
-        # Проверяем, какие размеры включены
         if self.price_multiplier_m > 0:
             sizes.append('M')
         if self.price_multiplier_l > 0:
@@ -305,13 +323,39 @@ class Combo(models.Model):
     slug = models.SlugField(max_length=40, unique=True)
     pizzas = models.ManyToManyField(Pizza, through='ComboPizza', blank=True)
     roman_pizzas = models.ManyToManyField(RomaPizza, through='ComboRomaPizza', blank=True)
-    drinks = models.ManyToManyField(Drink, through='ComboDrink', blank=True)
-
+    drinks = models.ManyToManyField(DrinkSize, through='ComboDrink', blank=True)
+    price = models.DecimalField(max_digits=5, decimal_places=2, default=380)
     class Meta:
-        ordering = ['name']
         verbose_name = "Комбо набор"
         verbose_name_plural = "Комбо наборы"
         
+
+    price = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Фиксированная цена (если задана)"
+    )
+
+    def get_items_price(self):
+        total = 0
+
+        for item in self.combopizza_set.select_related('pizza'):
+            if item.pizza:
+                total += item.pizza.get_price_for_size(item.size) * item.quantity
+
+        for item in self.comboromapizza_set.select_related('roman_pizza'):
+            total += item.roman_pizza.price * item.quantity
+
+        for item in self.combodrink_set.select_related('drink_size', 'drink_size__drink'):
+            total += item.drink_size.price * item.quantity
+
+        return total
+
+    def get_final_price(self):
+        """ Если задана цена комбо — используем её, иначе считаем автоматически """
+        return self.price if self.price else self.get_items_price()
 
     def __str__(self):
         return self.name
@@ -343,11 +387,14 @@ class ComboRomaPizza(models.Model):
 
 class ComboDrink(models.Model):
     combo = models.ForeignKey(Combo, on_delete=models.CASCADE)
-    drink = models.ForeignKey(Drink, on_delete=models.CASCADE)
+    drink_size = models.ForeignKey(DrinkSize, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1, verbose_name="Количество")
     
     class Meta:
-        unique_together = ['combo', 'drink']
+        unique_together = ['combo', 'drink_size']
     
     def __str__(self):
-        return f"{self.drink.name} x{self.quantity}"
+        return (
+        f"{self.drink_size.drink.name} "
+        f"({self.drink_size.get_size_display()}) × {self.quantity}"
+    )
