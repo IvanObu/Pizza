@@ -40,7 +40,6 @@ class PizzaAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ['name']
     
-    # Поля в админке
     fieldsets = [
         ('Основная информация', {
             'fields': ['name', 'slug', 'image', 'category', 'is_active', 'new']
