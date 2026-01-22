@@ -6,7 +6,6 @@ __pycache__/
 # C extensions
 *.so
 
-/media
 # /static
 /main/migrations
 # Distribution / packaging
