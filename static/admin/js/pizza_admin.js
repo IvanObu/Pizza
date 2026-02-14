@@ -51,11 +51,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function toggleBlocks() {
         const enabled = auto.checked;
 
-        // Показываем/скрываем блоки
         if (coefFieldset) coefFieldset.style.display = enabled ? '' : 'none';
         manualBlocks.forEach(fs => fs.style.display = enabled ? 'none' : '');
 
-        // Если включен авторасчет — очищаем все ручные поля
         if (enabled) {
             manualInputs.forEach(input => {
                 if (input) input.value = '';

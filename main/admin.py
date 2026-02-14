@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Drink, DrinkSize, Category, RomaPizza, Toppings, Pizza, Combo, ComboDrink, ComboPizza, ComboRomaPizza
+from django.utils.html import format_html
+from .models import Drink, DrinkSize, Category, RomaPizza, Toppings, Pizza, Combo, ComboDrink, ComboPizza, ComboRomaPizza, ActionImage, ActionGallery
 # Register your models here.
 
 @admin.register(Category)
@@ -35,7 +36,7 @@ class RomaPizzaAdmin(admin.ModelAdmin):
 class PizzaAdmin(admin.ModelAdmin):
     list_display = ['name', 'category', 'base_price_s', 'is_active', 'new', 'auto_calculate']
     list_filter = ['category', 'is_active', 'new', 'auto_calculate']
-    filter_horizontal = ['composition']
+    filter_horizontal = ['toppings']
     list_editable = ['is_active', 'new', 'auto_calculate']
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ['name']
@@ -45,7 +46,7 @@ class PizzaAdmin(admin.ModelAdmin):
             'fields': ['name', 'slug', 'image', 'category', 'is_active', 'new']
         }),
         ('Состав', {
-            'fields': ['composition']
+            'fields': ['toppings']
         }),
         ('Базовые параметры (размер S - 25см)', {
             'fields': ['base_price_s', 'base_weight_s'],
@@ -144,6 +145,23 @@ class ComboAdmin(admin.ModelAdmin):
     final_price.short_description = "Итоговая цена"
 
 
-
-
+class ActionImageInline(admin.TabularInline):
+    model = ActionImage
+    extra = 1
+    fields = ['image','preview']
+    readonly_fields = ['preview']
     
+    def preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" height="100" />', obj.image.url)
+        return "—"
+    preview.short_description = "Превью"
+
+@admin.register(ActionGallery)
+class ActionGalleryAdmin(admin.ModelAdmin):
+    inlines = [ActionImageInline]
+    list_display = ['title', 'image_count']
+    
+    def image_count(self, obj):
+        return obj.images.count()
+    image_count.short_description = "Кол-во изображений"

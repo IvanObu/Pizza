@@ -1,0 +1,28 @@
+{% load static %}
+<div class="grid grid-cols-2 gap-6">
+    
+    {% for category in categories %}
+    <div class="border rounded-xl border-gray-400 overflow-hidden hover:shadow-lg transition-shadow duration-300">
+
+        <div class="aspect-square overflow-hidden bg-white flex items-center justify-center group">
+            {% if category.image %}
+                <img src="{{ category.image.url}}" class='object-contain group-hover:scale-110 transition-transform duration-500'>
+            {% else %}
+                       <img src="{% static 'Site_images/image-not-found.png' %}" 
+                     alt="{{ category.name }}"
+                     class="object-contain opacity-50">
+            {% endif %}
+        </div>
+
+        <div class="p-1 text-center border-t mx-2">
+            <h3 class="font-semibold text-lg mb-1 ">
+                {% if category.name %}
+                {{ category.name }}
+                {% else %}
+                    Не найдено
+                {% endif %}
+            </h3>
+        </div>
+    </div>
+    {% endfor %}
+</div>

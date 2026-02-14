@@ -5,9 +5,15 @@ __pycache__/
 
 # C extensions
 *.so
+/media
 
-# /static
+package-lock.json
+package.json
+tailwind.config.js
+/static
 /main/migrations
+/node_modules
+
 # Distribution / packaging
 .Python
 build/
